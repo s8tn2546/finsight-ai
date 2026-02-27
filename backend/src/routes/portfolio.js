@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { mongoAvailable } from "../utils/db.js";
 import { Portfolio } from "../models/Portfolio.js";
-import { getCurrentPrice } from "../services/marketData.js";
+import { getCurrentPrice, getDailySeries } from "../services/marketData.js";
 
 const router = Router();
 const memStore = new Map();
@@ -48,6 +48,92 @@ router.get("/:userId", authMiddleware, async (req, res) => {
   }
 });
 
+// Historical total value time series for portfolio growth
+router.get("/:userId/history", authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    let data;
+    if (mongoAvailable()) {
+      data = await Portfolio.findOne({ userId });
+      if (!data) data = { userId, holdings: [] };
+    } else {
+      data = memStore.get(userId) || { userId, holdings: [] };
+    }
+    const holdings = data?.holdings || [];
+    if (holdings.length === 0) {
+      return res.json({ series: [] });
+    }
+
+    // Fetch daily series for each unique symbol
+    const symbols = [...new Set(holdings.map((h) => h.symbol))];
+    const seriesMap = {};
+    for (const s of symbols) {
+      const series = await getDailySeries(s, days);
+      seriesMap[s] = series; // [{ date,time,price }]
+    }
+
+    // Align by date (intersection of dates available)
+    const allDates = Object.values(seriesMap)
+      .flatMap((arr) => arr.map((d) => d.date || d.time))
+      .filter(Boolean);
+    const dateCounts = allDates.reduce((acc, d) => {
+      acc[d] = (acc[d] || 0) + 1;
+      return acc;
+    }, {});
+    const commonDates = Object.entries(dateCounts)
+      .filter(([, count]) => count === symbols.length)
+      .map(([d]) => d)
+      .sort();
+    if (commonDates.length === 0) {
+      // Fallback: take union and fill missing with nearest previous value
+      const unionDates = [...new Set(allDates)].sort();
+      // Build simple map per symbol by date for quick lookup
+      const mapByDate = {};
+      for (const s of symbols) {
+        mapByDate[s] = {};
+        for (const row of seriesMap[s]) {
+          const key = row.date || row.time;
+          mapByDate[s][key] = row.price ?? row.close ?? 0;
+        }
+      }
+      let lastPrice = {};
+      const series = unionDates.map((date) => {
+        let total = 0;
+        for (const h of holdings) {
+          const s = h.symbol;
+          const p = mapByDate[s][date];
+          if (p != null) lastPrice[s] = p;
+          const price = lastPrice[s] ?? mapByDate[s][unionDates[0]] ?? h.buyPrice ?? 0;
+          total += h.quantity * price;
+        }
+        return { date, time: date, price: Number(total.toFixed(2)) };
+      });
+      return res.json({ series });
+    }
+
+    // Sum values per date across holdings
+    const priceBySymbolDate = {};
+    for (const s of symbols) {
+      priceBySymbolDate[s] = Object.fromEntries(
+        seriesMap[s].map((d) => [d.date || d.time, d.price ?? d.close ?? 0])
+      );
+    }
+    const series = commonDates.map((date) => {
+      let total = 0;
+      for (const h of holdings) {
+        const p = priceBySymbolDate[h.symbol][date] ?? h.buyPrice ?? 0;
+        total += h.quantity * p;
+      }
+      return { date, time: date, price: Number(total.toFixed(2)) };
+    });
+
+    return res.json({ series });
+  } catch (e) {
+    return res.status(500).json({ error: "portfolio_history_failed" });
+  }
+});
+
 async function computeAnalytics(p) {
   const prices = {};
   for (const h of p.holdings) {
@@ -88,6 +174,7 @@ async function computeAnalytics(p) {
     totalInvestment,
     currentValue,
     profitLoss,
+    bySymbolValues: bySymbol,
     allocationPercentages,
     diversificationScore: Number(diversificationScore.toFixed(2)),
     riskScore: Number(riskScore.toFixed(2)),

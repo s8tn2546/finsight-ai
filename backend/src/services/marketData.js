@@ -42,6 +42,47 @@ export async function getLastTwoCloses(symbol) {
   }
 }
 
+export async function getDailySeries(symbol, days = 30) {
+  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+  if (!apiKey) return mockDailySeries(symbol, days);
+
+  try {
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(
+      symbol
+    )}&apikey=${apiKey}`;
+    const r = await axios.get(url, { timeout: 10000 });
+    const timeSeries = r?.data?.["Time Series (Daily)"];
+    if (!timeSeries) return mockDailySeries(symbol, days);
+
+    const dates = Object.keys(timeSeries).sort().reverse().slice(0, days);
+    return dates.map((date) => {
+      const o = timeSeries[date];
+      return {
+        date,
+        time: date,
+        open: parseFloat(o["1. open"]) || 0,
+        high: parseFloat(o["2. high"]) || 0,
+        low: parseFloat(o["3. low"]) || 0,
+        close: parseFloat(o["4. close"]) || 0,
+        price: parseFloat(o["4. close"]) || 0,
+      };
+    }).reverse();
+  } catch {
+    return mockDailySeries(symbol, days);
+  }
+}
+
+function mockDailySeries(symbol, days) {
+  const base = mockPrice(symbol);
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (days - 1 - i));
+    const date = d.toISOString().slice(0, 10);
+    const price = base + (i * 0.5) + Math.sin(i / 3) * 2;
+    return { date, time: date, open: price - 1, high: price + 1, low: price - 1, close: price, price };
+  });
+}
+
 function mockPrice(symbol) {
   let seed = 0;
   for (let i = 0; i < symbol.length; i++) seed += symbol.charCodeAt(i);

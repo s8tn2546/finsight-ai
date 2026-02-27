@@ -11,6 +11,18 @@ const UserSchema = new mongoose.Schema(
     riskTolerance: { type: String, enum: ["low", "medium", "high"], default: "medium" },
     preferredCurrency: { type: String, default: "USD" },
     completedLessons: { type: [String], default: [] },
+    quizResults: {
+      type: [
+        {
+          lessonId: String,
+          score: Number,
+          total: Number,
+          correct: Number,
+          completedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );

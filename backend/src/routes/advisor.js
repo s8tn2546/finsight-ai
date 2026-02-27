@@ -27,7 +27,7 @@ router.post("/chat", authMiddleware, async (req, res) => {
     const headlines = Object.entries(newsMap).flatMap(([s, list]) =>
       list.map((t) => `${s}: ${t}`)
     );
-    const sentiment = await analyzeSentiment(headlines);
+    const sentiment = await analyzeSentiment(headlines, { symbol: "PORTFOLIO" });
     const context = [
       "You are an intelligent financial advisor. Be concise, educational, and non-promissory.",
       `User portfolio: ${JSON.stringify(p || { holdings: [] })}`,

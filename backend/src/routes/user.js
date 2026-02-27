@@ -51,4 +51,31 @@ router.post("/lesson/:lessonId", authMiddleware, async (req, res) => {
   }
 });
 
+/** Submit Quiz Result */
+router.post("/lesson/:lessonId/quiz", authMiddleware, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { score, total, correct } = req.body || {};
+    const user = await User.findById(req.user.sub);
+    if (!user) return res.status(404).json({ error: "user_not_found" });
+    if (typeof score !== "number" || typeof total !== "number" || typeof correct !== "number") {
+      return res.status(400).json({ error: "score_total_correct_required" });
+    }
+
+    const existing = user.quizResults.find((r) => r.lessonId === lessonId);
+    if (existing) {
+      existing.score = score;
+      existing.total = total;
+      existing.correct = correct;
+      existing.completedAt = new Date();
+    } else {
+      user.quizResults.push({ lessonId, score, total, correct });
+    }
+    await user.save();
+    return res.json({ message: "quiz_saved", quizResults: user.quizResults });
+  } catch (e) {
+    return res.status(500).json({ error: "quiz_save_failed" });
+  }
+});
+
 export default router;

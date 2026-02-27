@@ -22,7 +22,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     // 2. News Sentiment
     const headlines = await getNewsHeadlines(symbol);
-    const sentiment = await analyzeSentiment(headlines);
+    const sentiment = await analyzeSentiment(headlines, { symbol });
 
     // 3. Market Move
     const [prev, last] = await getLastTwoCloses(symbol);

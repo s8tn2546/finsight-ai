@@ -13,6 +13,7 @@ import newsRouter from "./routes/news.js";
 import portfolioRouter from "./routes/portfolio.js";
 import advisorRouter from "./routes/advisor.js";
 import userRouter from "./routes/user.js";
+import marketRouter from "./routes/market.js";
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use("/news", newsRouter);
 app.use("/portfolio", portfolioRouter);
 app.use("/advisor", advisorRouter);
 app.use("/user", userRouter);
+app.use("/market", marketRouter);
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
@@ -42,6 +44,8 @@ const io = new SocketIOServer(server, {
     origin: process.env.CORS_ORIGIN || "*",
   },
 });
+// Expose io to routes for real-time events
+app.set("io", io);
 
 const communityMessages = [];
 
